@@ -1,0 +1,14 @@
+{
+  "root": true,
+  "env": { "node": true, "es2022": true, "jest": true },
+  "extends": ["eslint:recommended", "prettier"],
+  "parserOptions": { "ecmaVersion": 2022 },
+  "rules": {
+    "eqeqeq": "error",
+    "no-var": "error",
+    "prefer-const": "error",
+    "no-shadow": "error",
+    "no-console": "error"
+  },
+  "overrides": [{ "files": ["src/index.js"], "rules": { "no-console": "off" } }]
+}

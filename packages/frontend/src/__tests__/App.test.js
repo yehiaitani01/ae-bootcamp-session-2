@@ -1,136 +1,224 @@
-import React, { act } from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { rest } from 'msw';
 import { setupServer } from 'msw/node';
 import App from '../App';
+import { toDateKey } from '../utils/dates';
 
-// Mock server to intercept API requests
+const today = toDateKey(new Date());
+
+let store;
+let nextId;
+
+const seed = () => [
+  {
+    id: 1,
+    name: 'Write report',
+    description: '',
+    due_date: today,
+    priority: 'high',
+    color: 'sky',
+    completed: 0,
+  },
+  {
+    id: 2,
+    name: 'Buy milk',
+    description: '',
+    due_date: null,
+    priority: 'none',
+    color: null,
+    completed: 0,
+  },
+];
+
 const server = setupServer(
-  // GET /api/items handler
-  rest.get('/api/items', (req, res, ctx) => {
-    return res(
-      ctx.status(200),
-      ctx.json([
-        { id: 1, name: 'Test Item 1', created_at: '2023-01-01T00:00:00.000Z' },
-        { id: 2, name: 'Test Item 2', created_at: '2023-01-02T00:00:00.000Z' },
-      ])
-    );
+  rest.get('/api/items', (req, res, ctx) => res(ctx.json(store))),
+  rest.post('/api/items', async (req, res, ctx) => {
+    const body = await req.json();
+    const item = {
+      description: '',
+      due_date: null,
+      priority: 'none',
+      color: null,
+      completed: 0,
+      ...body,
+      id: nextId,
+    };
+    nextId += 1;
+    store = [...store, item];
+    return res(ctx.status(201), ctx.json(item));
   }),
-  
-  // POST /api/items handler
-  rest.post('/api/items', (req, res, ctx) => {
-    const { name } = req.body;
-    
-    if (!name || name.trim() === '') {
-      return res(
-        ctx.status(400),
-        ctx.json({ error: 'Item name is required' })
-      );
-    }
-    
-    return res(
-      ctx.status(201),
-      ctx.json({
-        id: 3,
-        name,
-        created_at: new Date().toISOString(),
-      })
+  rest.patch('/api/items/:id', async (req, res, ctx) => {
+    const changes = await req.json();
+    const id = Number(req.params.id);
+    store = store.map((item) =>
+      item.id === id
+        ? { ...item, ...changes, completed: Number(changes.completed ?? item.completed) }
+        : item,
     );
-  })
+    return res(ctx.json(store.find((item) => item.id === id)));
+  }),
+  rest.delete('/api/items/completed', (req, res, ctx) => {
+    const count = store.filter((item) => item.completed).length;
+    store = store.filter((item) => !item.completed);
+    return res(ctx.json({ message: 'Completed items deleted successfully', count }));
+  }),
+  rest.delete('/api/items/:id', (req, res, ctx) => {
+    const id = Number(req.params.id);
+    store = store.filter((item) => item.id !== id);
+    return res(ctx.json({ message: 'Item deleted successfully', id }));
+  }),
 );
 
-// Setup and teardown for the mock server
-beforeAll(() => server.listen());
-afterEach(() => server.resetHandlers());
+beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
+afterEach(() => {
+  server.resetHandlers();
+  window.localStorage.clear();
+});
 afterAll(() => server.close());
 
-describe('App Component', () => {
-  test('renders the header', async () => {
-    await act(async () => {
-      render(<App />);
-    });
-    expect(screen.getByText('React Frontend with Node Backend')).toBeInTheDocument();
-    expect(screen.getByText('Connected to in-memory database')).toBeInTheDocument();
+beforeEach(() => {
+  store = seed();
+  nextId = 100;
+});
+
+const renderApp = async () => {
+  render(<App />);
+  await screen.findByText('Write report');
+};
+
+describe('App', () => {
+  it('lists tasks grouped by day with a summary', async () => {
+    await renderApp();
+
+    expect(screen.getByRole('heading', { name: 'Today (1)' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'No date (1)' })).toBeInTheDocument();
+    expect(screen.getByText('2 active')).toBeInTheDocument();
   });
 
-  test('loads and displays items', async () => {
-    await act(async () => {
-      render(<App />);
-    });
-    
-    // Initially shows loading state
-    expect(screen.getByText('Loading data...')).toBeInTheDocument();
-    
-    // Wait for items to load
-    await waitFor(() => {
-      expect(screen.getByText('Test Item 1')).toBeInTheDocument();
-      expect(screen.getByText('Test Item 2')).toBeInTheDocument();
-    });
+  it('shows the empty state when there are no tasks', async () => {
+    store = [];
+    render(<App />);
+
+    expect(await screen.findByText('Nothing to do yet')).toBeInTheDocument();
   });
 
-  test('adds a new item', async () => {
-    const user = userEvent.setup();
-    
-    await act(async () => {
-      render(<App />);
-    });
-    
-    // Wait for items to load
-    await waitFor(() => {
-      expect(screen.queryByText('Loading data...')).not.toBeInTheDocument();
-    });
-    
-    // Fill in the form and submit
-    const input = screen.getByPlaceholderText('Enter item name');
-    await act(async () => {
-      await user.type(input, 'New Test Item');
-    });
-    
-    const submitButton = screen.getByText('Add Item');
-    await act(async () => {
-      await user.click(submitButton);
-    });
-    
-    // Check that the new item appears
-    await waitFor(() => {
-      expect(screen.getByText('New Test Item')).toBeInTheDocument();
-    });
-  });
-
-  test('handles API error', async () => {
-    // Override the default handler to simulate an error
+  it('shows an error banner when loading fails', async () => {
     server.use(
-      rest.get('/api/items', (req, res, ctx) => {
-        return res(ctx.status(500));
-      })
+      rest.get('/api/items', (req, res, ctx) => res(ctx.status(500), ctx.json({ error: 'boom' }))),
     );
-    
-    await act(async () => {
-      render(<App />);
-    });
-    
-    // Wait for error message
-    await waitFor(() => {
-      expect(screen.getByText(/Failed to fetch data/)).toBeInTheDocument();
-    });
+    render(<App />);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't load your tasks. boom");
   });
 
-  test('shows empty state when no items', async () => {
-    // Override the default handler to return empty array
-    server.use(
-      rest.get('/api/items', (req, res, ctx) => {
-        return res(ctx.status(200), ctx.json([]));
-      })
+  it('adds a task from quick add', async () => {
+    await renderApp();
+
+    await userEvent.type(
+      screen.getByRole('textbox', { name: 'Quick add task' }),
+      'Call mom{Enter}',
     );
-    
-    await act(async () => {
-      render(<App />);
-    });
-    
-    // Wait for empty state message
-    await waitFor(() => {
-      expect(screen.getByText('No items found. Add some!')).toBeInTheDocument();
-    });
+
+    expect(await screen.findByText('Call mom')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Quick add task' })).toHaveValue('');
+  });
+
+  it('adds a task with details from the dialog', async () => {
+    await renderApp();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Add task' }));
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.type(within(dialog).getByRole('textbox', { name: /Task name/ }), 'Plan trip');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add task' }));
+
+    expect(await screen.findByText('Plan trip')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it('edits a task', async () => {
+    await renderApp();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Edit Buy milk' }));
+    const dialog = await screen.findByRole('dialog');
+    const name = within(dialog).getByRole('textbox', { name: /Task name/ });
+    await userEvent.clear(name);
+    await userEvent.type(name, 'Buy oat milk');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save changes' }));
+
+    expect(await screen.findByText('Buy oat milk')).toBeInTheDocument();
+    expect(screen.queryByText('Buy milk')).not.toBeInTheDocument();
+  });
+
+  it('completes a task and moves it to the Completed group', async () => {
+    await renderApp();
+
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Mark as done: Buy milk' }));
+
+    expect(await screen.findByRole('heading', { name: 'Completed (1)' })).toBeInTheDocument();
+    expect(screen.getByText('1 completed')).toBeInTheDocument();
+  });
+
+  it('deletes a task and can undo it', async () => {
+    await renderApp();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Delete Buy milk' }));
+    await waitFor(() => expect(screen.queryByText('Buy milk')).not.toBeInTheDocument());
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Undo' }));
+
+    expect(await screen.findByText('Buy milk')).toBeInTheDocument();
+  });
+
+  it('clears completed tasks only after confirmation', async () => {
+    store = store.map((item) => (item.id === 2 ? { ...item, completed: 1 } : item));
+    await renderApp();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Clear completed' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText(/permanently removes 1 completed task/)).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Clear completed' }));
+
+    await waitFor(() => expect(screen.queryByText('Buy milk')).not.toBeInTheDocument());
+    expect(screen.getByText('Write report')).toBeInTheDocument();
+  });
+
+  it('switches between list, day and calendar views and remembers the choice', async () => {
+    await renderApp();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Day' }));
+    expect(screen.getByRole('region', { name: 'Day view' })).toBeInTheDocument();
+    expect(screen.getByText('Write report')).toBeInTheDocument();
+    expect(screen.queryByText('Buy milk')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Calendar' }));
+    expect(screen.getByRole('region', { name: 'Calendar view' })).toBeInTheDocument();
+
+    expect(JSON.parse(window.localStorage.getItem('todo-app.preferences')).view).toBe('calendar');
+  });
+
+  it('switches views with keyboard shortcuts', async () => {
+    await renderApp();
+
+    await userEvent.keyboard('3');
+
+    expect(screen.getByRole('region', { name: 'Calendar view' })).toBeInTheDocument();
+  });
+
+  it('keeps the dialog usable when a save fails', async () => {
+    await renderApp();
+    server.use(
+      rest.post('/api/items', (req, res, ctx) =>
+        res(ctx.status(400), ctx.json({ error: 'Name too long' })),
+      ),
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Add task' }));
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.type(within(dialog).getByRole('textbox', { name: /Task name/ }), 'X');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add task' }));
+
+    expect(await screen.findByText(/Couldn't save your task. Name too long/)).toBeInTheDocument();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 });

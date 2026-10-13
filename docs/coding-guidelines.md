@@ -131,8 +131,8 @@ Because this guideline follows banking-grade discipline, security is part of nor
 
 ## 10. API Conventions (Backend)
 
-- RESTful, resource-oriented routes with plural nouns (`/api/todos`, `/api/todos/:id`) and correct HTTP verbs (`GET`, `POST`, `PUT`/`PATCH`, `DELETE`).
-- JSON request and response bodies with consistent field naming (`camelCase`), ISO 8601 for dates (`2026-01-31T09:00:00Z`).
+- RESTful, resource-oriented routes with plural nouns (this project uses `/api/items`, `/api/items/:id`) and correct HTTP verbs (`GET`, `POST`, `PUT`/`PATCH`, `DELETE`).
+- JSON request and response bodies with consistent field naming, ISO 8601 for dates. This project's `/api/items` contract uses `snake_case` fields (`due_date`, `created_at`) for backward compatibility with the original endpoints; keep that style for every field on it. Due dates are `YYYY-MM-DD` or local `YYYY-MM-DDTHH:mm`.
 - Return appropriate status codes (`200`, `201`, `204`, `400`, `404`, `500`) and a predictable error shape, e.g. `{ "error": "Title is required" }`.
 - Keep route handlers thin: parse and validate the request, call a service, and return the response.
 

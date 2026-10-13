@@ -19,11 +19,16 @@
     "test:backend": "npm run test --workspace=backend",
     "install:all": "npm install && npm run install:frontend && npm run install:backend",
     "install:frontend": "cd packages/frontend && npm install",
-    "install:backend": "cd packages/backend && npm install"
+    "install:backend": "cd packages/backend && npm install",
+    "lint": "npm run lint --workspaces --if-present",
+    "format": "prettier --write \"packages/**/*.{js,json,css}\" \"tests/**/*.js\" playwright.config.js",
+    "format:check": "prettier --check \"packages/**/*.{js,json,css}\" \"tests/**/*.js\" playwright.config.js"
   },
   "devDependencies": {
-    "concurrently": "^8.2.2",
     "@playwright/test": "^1.40.0",
+    "concurrently": "^8.2.2",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.9.10",
     "wait-on": "^7.2.0"
   }
 }

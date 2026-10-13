@@ -31,7 +31,7 @@ Define these as CSS custom properties (or the theme object) and use them everywh
 
 | Token | Value | Use |
 |-------|-------|-----|
-| `--color-primary` | `#1E9BE8` (sky blue) | Primary actions, active states, focus |
+| `--color-primary` | `#1E9BE8` (sky blue); the implementation uses `#0F7AC4` for filled buttons and text so contrast meets WCAG AA, keeping `#1E9BE8` for gradients and highlights | Primary actions, active states, focus |
 | `--color-primary-dark` | `#0B6FB8` | Pressed state, links on light backgrounds |
 | `--color-secondary` | `#2EC4A6` (aqua green) | Secondary accents, success, "completed" |
 | `--color-accent` | `#8BD450` (fresh leaf green) | Highlights, progress |
@@ -98,7 +98,8 @@ The user can switch between views with a single **segmented control** (List | Da
 - Each day cell shows up to 3 tasks as small color-coded pills; extra tasks collapse into a "+N more" indicator.
 - Tapping a day opens that day's tasks in a bottom sheet (mobile) or side panel (desktop) with a button to add a task for that date.
 - Days outside the current month are muted. Weekends are subtly distinguished.
-- Tasks can be dragged to another day to reschedule (FR-8.13), with a keyboard alternative.
+- Tasks can be dragged to another day in the Calendar view to reschedule (FR-8.13); the time of day is kept and an Undo is offered. Each row has a `Move <task>` handle that also works with the keyboard (Space to pick up, arrows to move, Space to drop, Esc to cancel).
+- In the List view, active tasks can be dragged to reorder (FR-4.4). The first drag switches sorting to "Manual order" and shows an Undo that restores the previous sort. Completed tasks are not draggable.
 
 ## 6. Components
 
